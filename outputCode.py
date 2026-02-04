@@ -33,9 +33,11 @@ def init_db():
 # --- التطبيق الرئيسي ---
 if check_password():
     conn = init_db()
+    c = conn.cursor()
     st.sidebar.title("🏨 إدارة سياحة شرم")
-    page = st.sidebar.radio("القائمة:", ["لوحة التحكم", "إضافة حجز", "الأوبريشن", "الحسابات"])
+    page = st.sidebar.radio("القائمة:", ["لوحة التحكم", "إضافة حجز", "الأوبريشن (تعديل وحذف)", "الحسابات"])
 
+    # --- لوحة التحكم ---
     if page == "لوحة التحكم":
         st.title("📊 ملخص الأداء")
         df = pd.read_sql("SELECT * FROM bookings", conn)
@@ -48,6 +50,7 @@ if check_password():
         else:
             st.info("السيستم جاهز، ابدأ بإضافة أول حجز.")
 
+    # --- إضافة حجز ---
     elif page == "إضافة حجز":
         st.title("📝 حجز جديد")
         with st.form("b_form", clear_on_submit=True):
@@ -59,6 +62,60 @@ if check_password():
                 tr = st.selectbox("الرحلة", ["سفاري", "غوص", "بحرية", "دولفين"])
             with col2:
                 co = st.number_input("العدد", min_value=1)
+                to = st.number_input("السعر")
+                pa = st.number_input("المقدم")
+                ag = st.text_input("المندوب")
+            
+            if st.form_submit_button("حفظ الحجز"):
+                conn.execute("INSERT INTO bookings (date, client, hotel, trip, count, total, paid, agent, status) VALUES (?,?,?,?,?,?,?,?,?)",
+                             (str(d), cl, ht, tr, co, to, pa, ag, "مؤكد"))
+                conn.commit()
+                st.success("تم الحفظ!")
+                st.rerun()
+
+    # --- الأوبريشن (تعديل وحذف) ---
+    elif page == "الأوبريشن (تعديل وحذف)":
+        st.title("🚌 إدارة الرحلات")
+        search_date = st.date_input("اختر اليوم", datetime.now())
+        df = pd.read_sql(f"SELECT * FROM bookings WHERE date='{search_date}'", conn)
+        
+        if not df.empty:
+            st.info("💡 للتعديل: اضغط على الخانة مباشرة. للحذف: حدد الصف واضغط Delete من لوحة المفاتيح.")
+            # محرر البيانات مع خاصية مسح الصفوف
+            edited_df = st.data_editor(df, num_rows="dynamic", use_container_width=True, key="op_editor")
+            
+            col_save, col_del = st.columns(2)
+            
+            with col_save:
+                if st.button("💾 حفظ كل التعديلات"):
+                    conn.execute(f"DELETE FROM bookings WHERE date='{search_date}'")
+                    edited_df.to_sql('bookings', conn, if_exists='append', index=False)
+                    conn.commit()
+                    st.success("✅ تم تحديث البيانات!")
+                    st.rerun()
+            
+            st.divider()
+            # خيار الحذف السريع لعميل محدد
+            st.subheader("🗑️ حذف حجز محدد")
+            client_to_del = st.selectbox("اختر العميل المراد حذفه نهائياً:", df['client'].tolist())
+            if st.button("❗ تأكيد الحذف النهائي"):
+                c.execute("DELETE FROM bookings WHERE client = ? AND date = ?", (client_to_del, str(search_date)))
+                conn.commit()
+                st.warning(f"تم حذف حجز {client_to_del} من النظام.")
+                st.rerun()
+        else:
+            st.warning("لا توجد رحلات لهذا اليوم.")
+
+    # --- الحسابات ---
+    elif page == "الحسابات":
+        st.title("💰 الإدارة المالية")
+        df_acc = pd.read_sql("SELECT client, total, paid, (total-paid) as debt, status FROM bookings", conn)
+        if not df_acc.empty:
+            st.dataframe(df_acc, use_container_width=True)
+            total_debt = df_acc['debt'].sum()
+            st.error(f"إجمالي الديون المتبقية: ${total_debt:,.2f}")
+        else:
+            st.info("لا توجد بيانات مالية.")
                 to = st.number_input("السعر")
                 pa = st.number_input("المقدم")
                 ag = st.text_input("المندوب")
