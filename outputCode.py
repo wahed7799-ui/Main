@@ -13,7 +13,7 @@ def check_password():
         if st.button("دخول"):
             if password_input == PASSWORD:
                 st.session_state.password_correct = True
-                st.experimental_rerun()
+                st.rerun()
             else:
                 st.error("❌ كلمة المرور غير صحيحة")
         return False
